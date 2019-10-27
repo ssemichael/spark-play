@@ -14,7 +14,7 @@ final case class PathForFilter(src: VertexId, dest: Seq[Array[Edge[String]]], pa
 object FindPath {
 
   /**
-    * Assumption on the graph: a vertex only has fan in , no fan out
+    * Assumption: in degree could be > 1 , and out degree could only be 1
     * @param graph
     * @param result
     * @param currentLevel
