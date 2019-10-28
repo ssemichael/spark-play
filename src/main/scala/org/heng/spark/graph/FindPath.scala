@@ -20,15 +20,15 @@ object FindPath {
     * @param currentLevel
     * @return
     */
-  def findPath(graph: Graph[Long, String], result: Array[Path], currentLevel: Array[Path]): Array[Path] = {
-    if (currentLevel.length==0) {
+  def findPath(graph: Graph[Long, String], result: Array[Path], currentLevel: RDD[Path]): Array[Path] = {
+    if (currentLevel.isEmpty()) {
       return result
     }
     //find neighbors
     val neighbors = currentLevel.map(t => PathForFilter(t.src, graph.collectEdges(EdgeDirection.Out).lookup(t.dest), t.path))
     //if no more neighbors, put paths to result
     val collected = neighbors.filter(t => t.dest.length == 0).map(t => Path(t.src, t.path.last, t.path))
-    val newResult = result ++ collected
+    val newResult = result ++ collected.collect()
     //otherwise, find next level neighbors
     val nextLevel = neighbors.filter(t => t.dest.length > 0 && !t.path.contains(t.dest(0)(0).dstId) ).map(
       t => Path(t.src, t.dest(0)(0).dstId, t.path :+ t.dest(0)(0).dstId))
@@ -69,9 +69,6 @@ object FindPath {
     //val graph = GraphLoader.edgeListFile(sc, "in/graphx/followers.txt")
     val graph = Graph.fromEdges(mutations,(0L))
 
-
-
-
     //create graph with in-degree as vertex property
     val graphWithIndgrees
     = graph.outerJoinVertices(graph.inDegrees)((vid, _, degIpt) => degIpt.getOrElse(0L))
@@ -81,7 +78,7 @@ object FindPath {
     val startingVertices = graphWithIndgrees.vertices.filter(_._2 == 0).map(_._1).map(s => Path(s, s, Seq[VertexId](s)))
     ///have to use collect here , or get NPE. but collect should not be used
     //TODO figure out why
-    val result = findPath(graph, Array[Path](), startingVertices.collect())
+    val result = findPath(graph, Array[Path](), startingVertices)
 
     result.foreach(println)
   }
