@@ -7,8 +7,8 @@ import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.SparkSession
 
 
-final case class Path(src: VertexId, dest: VertexId, path: Seq[VertexId])
-final case class PathForFilter(src: VertexId, dest: Seq[Array[Edge[String]]], path: Seq[VertexId])
+final case class Path(src: VertexId, dest: VertexId, path: Seq[VertexId], lastTimestamp: Long)
+final case class PathForFilter(src: VertexId, dest: Seq[Array[Edge[Long]]], path: Seq[VertexId], lastTimestamp: Long)
 
 
 object FindPath {
@@ -20,18 +20,25 @@ object FindPath {
     * @param currentLevel
     * @return
     */
-  def findPath(graph: Graph[Long, String], result: Array[Path], currentLevel: RDD[Path]): Array[Path] = {
-    if (currentLevel.isEmpty()) {
+  def findPath(graph: Graph[Long, Long], result: Array[Path], currentLevel: Array[Path]): Array[Path] = {
+    if (currentLevel.isEmpty) {
       return result
     }
     //find neighbors
-    val neighbors = currentLevel.map(t => PathForFilter(t.src, graph.collectEdges(EdgeDirection.Out).lookup(t.dest), t.path))
+    val neighbors = currentLevel.map(t => PathForFilter(t.src,
+         graph.collectEdges(EdgeDirection.Out).lookup(t.dest), t.path, t.lastTimestamp))
     //if no more neighbors, put paths to result
-    val collected = neighbors.filter(t => t.dest.length == 0).map(t => Path(t.src, t.path.last, t.path))
-    val newResult = result ++ collected.collect()
+    val collected = neighbors.filter(t => t.dest.length == 0 || t.dest(0)(0).attr < t.lastTimestamp)
+      .map(t => Path(t.src, t.path.last, t.path, t.lastTimestamp))
+    val newResult = result ++ collected
     //otherwise, find next level neighbors
-    val nextLevel = neighbors.filter(t => t.dest.length > 0 && !t.path.contains(t.dest(0)(0).dstId) ).map(
-      t => Path(t.src, t.dest(0)(0).dstId, t.path :+ t.dest(0)(0).dstId))
+    val nextLevel = neighbors.filter(t => t.dest.length > 0
+      && !t.path.contains(t.dest(0)(0).dstId)
+      && t.lastTimestamp < t.dest(0)(0).attr)
+      .map(
+        t => Path(t.src, t.dest(0)(0).dstId,
+          t.path :+ t.dest(0)(0).dstId,
+          t.dest(0)(0).attr))
 
     findPath(graph, newResult, nextLevel)
 
@@ -54,20 +61,21 @@ object FindPath {
     val sc = spark.sparkContext
 
     //build graph
-    val mutations: RDD[Edge[String]] =
+    val mutations: RDD[Edge[Long]] =
       sc.parallelize(Array(
-        Edge(4L, 5L, "timestamp"),
-        Edge(5L, 6L, "timestamp"),
-        Edge(3L, 2L, "timestamp"),
-        Edge(2L, 1L, "timestamp"),
-        Edge(7L, 8L, "timestamp"),
-        Edge(1L, 0L, "timestamp"),
-        Edge(10L, 6L, "timestamp"),
-        Edge(11L, 12L, "timestamp"),
-        Edge(12L, 11L, "timestamp")))
+        Edge(4L, 5L, 1L),
+        Edge(5L, 6L, 2L),
+        Edge(3L, 2L, 3L),
+        Edge(2L, 1L, 4L),
+        Edge(7L, 8L, 5L),
+        Edge(1L, 0L, 6L),
+        Edge(10L, 6L, 7L),
+        Edge(11L, 12L, 8L),
+        Edge(12L, 11L, 9L),
+        Edge(13L, 5L, 10L)))
 
     //val graph = GraphLoader.edgeListFile(sc, "in/graphx/followers.txt")
-    val graph = Graph.fromEdges(mutations,(0L))
+    val graph = Graph.fromEdges(mutations,(-1L))
 
     //create graph with in-degree as vertex property
     val graphWithIndgrees
@@ -75,10 +83,11 @@ object FindPath {
 
     //find starting Vertex with in degree = 0
     //vertices in cycles will be excluded because as they have non zero in-degree
-    val startingVertices = graphWithIndgrees.vertices.filter(_._2 == 0).map(_._1).map(s => Path(s, s, Seq[VertexId](s)))
+    val startingVertices = graphWithIndgrees.vertices.filter(_._2 == 0).map(_._1)
+      .map(s => Path(s, s, Seq[VertexId](s), -1L))
     ///have to use collect here , or get NPE. but collect should not be used
     //TODO figure out why
-    val result = findPath(graph, Array[Path](), startingVertices)
+    val result = findPath(graph, Array[Path](), startingVertices.collect())
 
     result.foreach(println)
   }
