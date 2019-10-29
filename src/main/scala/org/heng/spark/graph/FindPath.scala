@@ -6,9 +6,11 @@ import org.apache.spark.graphx.{Edge, EdgeDirection, Graph, VertexId}
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.SparkSession
 
+import scala.collection.mutable.ListBuffer
 
-final case class Path(src: VertexId, dest: VertexId, path: Seq[VertexId], lastTimestamp: Long)
-final case class PathForFilter(src: VertexId, dest: Seq[Array[Edge[Long]]], path: Seq[VertexId], lastTimestamp: Long)
+
+final case class Path(src: VertexId, dest: VertexId, path: ListBuffer[VertexId], lastTimestamp: Long)
+final case class PathForFilter(src: VertexId, dest: Seq[Array[Edge[Long]]], path: ListBuffer[VertexId], lastTimestamp: Long)
 
 
 object FindPath {
@@ -84,7 +86,7 @@ object FindPath {
     //find starting Vertex with in degree = 0
     //vertices in cycles will be excluded because as they have non zero in-degree
     val startingVertices = graphWithIndgrees.vertices.filter(_._2 == 0).map(_._1)
-      .map(s => Path(s, s, Seq[VertexId](s), -1L))
+      .map(s => Path(s, s, ListBuffer[VertexId](s), -1L))
     ///have to use collect here , or get NPE. but collect should not be used
     //TODO figure out why
     val result = findPath(graph, Array[Path](), startingVertices.collect())
