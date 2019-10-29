@@ -75,7 +75,7 @@ object FindPath {
         Edge(13L, 5L, 10L)))
 
     //val graph = GraphLoader.edgeListFile(sc, "in/graphx/followers.txt")
-    val graph = Graph.fromEdges(mutations,(-1L))
+    val graph = Graph.fromEdges(mutations,(-1L)).cache()
 
     //create graph with in-degree as vertex property
     val graphWithIndgrees
